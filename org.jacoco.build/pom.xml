@@ -14,7 +14,7 @@
 
   <groupId>org.jacoco</groupId>
   <artifactId>org.jacoco.build</artifactId>
-  <version>0.8.4-SNAPSHOT</version>
+  <version>0.8.5-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>JaCoCo</name>
@@ -138,15 +138,16 @@
     <argLine>${jvm.args}</argLine>
 
     <!-- Dependencies versions -->
-    <asm.version>7.0</asm.version>
+    <asm.version>7.1</asm.version>
     <ant.version>1.7.1</ant.version>
     <args4j.version>2.0.28</args4j.version>
     <junit.version>4.8.2</junit.version>
+    <googlecodeprettify.version>20100721</googlecodeprettify.version>
 
     <!-- ================== -->
     <!-- For SonarQube analysis -->
     <!-- ================== -->
-    <sonar.jacoco.reportPath>../${project.artifactId}.test/target/jacoco.exec</sonar.jacoco.reportPath>
+    <sonar.coverage.jacoco.xmlReportPaths>../org.jacoco.doc/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
     <sonar.surefire.reportsPath>../${project.artifactId}.test/target/surefire-reports/</sonar.surefire.reportsPath>
 
     <!-- See http://jira.codehaus.org/browse/SONAR-2096 -->
@@ -267,6 +268,7 @@
           <exclude>**/*.java</exclude>
           <exclude>**/*.kt</exclude>
           <exclude>**/*.groovy</exclude>
+          <exclude>**/*.scala</exclude>
           <exclude>**/*.properties</exclude>
         </excludes>
       </resource>
@@ -275,6 +277,16 @@
         <filtering>true</filtering>
         <includes>
           <include>**/*.properties</include>
+        </includes>
+        <excludes>
+          <exclude>**/*-test.properties</exclude>
+        </excludes>
+      </resource>
+      <resource>
+        <directory>src</directory>
+        <filtering>false</filtering>
+        <includes>
+          <include>**/*-test.properties</include>
         </includes>
       </resource>
       <resource>
@@ -347,24 +359,28 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-javadoc-plugin</artifactId>
-          <version>2.10.4</version>
+          <!--
+          Do not upgrade to 3.1.0 because it has troubles with "Automatic-Module-Name"
+          See https://issues.apache.org/jira/browse/MJAVADOC-588
+          -->
+          <version>3.0.1</version>
           <configuration>
             <quiet>true</quiet>
             <detectOfflineLinks>false</detectOfflineLinks>
           </configuration>
-          <dependencies>
-            <dependency>
-              <!-- Workaround to be able to use JDK 9 >= b175 -->
-              <groupId>commons-lang</groupId>
-              <artifactId>commons-lang</artifactId>
-              <version>2.6</version>
-            </dependency>
-          </dependencies>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-plugin-plugin</artifactId>
           <version>3.6.0</version>
+          <dependencies>
+            <dependency>
+              <!-- Workaround to be able to compile into Java 13 bytecode -->
+              <groupId>org.ow2.asm</groupId>
+              <artifactId>asm</artifactId>
+              <version>7.1</version>
+            </dependency>
+          </dependencies>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
@@ -390,6 +406,14 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-shade-plugin</artifactId>
           <version>3.2.1</version>
+          <dependencies>
+            <dependency>
+              <!-- Workaround to be able to compile into Java 13 bytecode -->
+              <groupId>org.ow2.asm</groupId>
+              <artifactId>asm</artifactId>
+              <version>7.1</version>
+            </dependency>
+          </dependencies>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
@@ -459,21 +483,6 @@
         <configuration>
           <testSourceDirectory>${project.build.sourceDirectory}</testSourceDirectory>
           <testClassesDirectory>${project.build.outputDirectory}</testClassesDirectory>
-        </configuration>
-      </plugin>
-
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-resources-plugin</artifactId>
-        <configuration>
-          <!-- We can't use delimiters "${*}" and "$*$" together - probably it's bug in plugin -->
-          <!-- so for now we will define only our delimiters in compliance with https://sourceforge.net/apps/trac/eclemma/changeset/1229 -->
-          <!-- but it would be better to use defaults -->
-          <useDefaultDelimiters>false</useDefaultDelimiters>
-          <delimiters>
-            <delimiter>@*@</delimiter>
-            <delimiter>$*$</delimiter>
-          </delimiters>
         </configuration>
       </plugin>
 
@@ -558,6 +567,7 @@
                 <fileset dir="${basedir}" includes="**/*.java,**/*.xml,**/*.bsh" excludes="target/**,.idea/**,nb-configuration.xml" id="missinglicense.fileset">
                   <include name="**/*.kt"/>
                   <include name="**/*.groovy"/>
+                  <include name="**/*.scala"/>
                   <not>
                     <and>
                       <contains text="Copyright (c) 2009, 2019 Mountainminds GmbH &amp; Co. KG and Contributors"/>
@@ -646,6 +656,16 @@
                 buildNumber = project.getProperties().get("buildNumber");
                 pkgName = buildNumber.substring(buildNumber.length() - 7, buildNumber.length());
                 project.getProperties().setProperty("jacoco.runtime.package.name", "org.jacoco.agent.rt.internal_" + pkgName);
+                
+                void loadLicense(String libraryId) {
+                    version = project.getProperties().get(libraryId + ".version");
+                    path = project.getBasedir().toPath().resolve("../org.jacoco.build/licenses/" + libraryId + "-" + version + ".html");
+                    license = new String(java.nio.file.Files.readAllBytes(path), "UTF-8");
+                    project.getProperties().setProperty(libraryId + ".license", license);
+                }
+                loadLicense("args4j");
+                loadLicense("asm");
+                loadLicense("googlecodeprettify");
               ]]>
               </script>
             </configuration>
@@ -732,6 +752,27 @@
           </plugin>
         </plugins>
       </build>
+    </profile>
+
+    <!--
+    Following profile enables compilation into bytecode version 13
+    when requested "bytecode.version" greater than 13,
+    because this is maximum that can be processed by
+    maven-shade-plugin and maven-plugin-plugin.
+    This is overridden for tests.
+    -->
+    <profile>
+      <id>java14-bytecode</id>
+      <activation>
+        <property>
+          <name>bytecode.version</name>
+          <value>14</value>
+        </property>
+      </activation>
+      <properties>
+        <maven.compiler.source>13</maven.compiler.source>
+        <maven.compiler.target>13</maven.compiler.target>
+      </properties>
     </profile>
 
     <!-- This profile enables use of ECJ -->

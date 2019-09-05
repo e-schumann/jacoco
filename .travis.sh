@@ -63,8 +63,14 @@ case "$JDK" in
 11)
   install_jdk $JDK11_URL
   ;;
-12-ea)
-  install_jdk $JDK12_EA_URL
+12)
+  install_jdk $JDK12_URL
+  ;;
+13-ea)
+  install_jdk $JDK13_EA_URL
+  ;;
+14-ea)
+  install_jdk $JDK14_EA_URL
   ;;
 esac
 
@@ -93,12 +99,16 @@ case "$JDK" in
   mvn -V -B -e verify -Djdk.version=${JDK} -Dbytecode.version=${JDK} -Decj=${ECJ:-} --toolchains=./.travis/travis-toolchains.xml \
     --settings=./.travis/settings.xml
   ;;
-10 | 11)
+10 | 11 | 12)
   mvn -V -B -e verify -Dbytecode.version=${JDK} \
     --settings=./.travis/settings.xml
   ;;
-12-ea)
-  mvn -V -B -e verify -Dbytecode.version=12 \
+13-ea)
+  mvn -V -B -e verify -Dbytecode.version=13 \
+    --settings=./.travis/settings.xml
+  ;;
+14-ea)
+  mvn -V -B -e verify -Dbytecode.version=14 \
     --settings=./.travis/settings.xml
   ;;
 *)

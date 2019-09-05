@@ -46,8 +46,8 @@ public class InstrSupportTest {
 	}
 
 	@Test
-	public void classReaderFor_should_read_java_13_class() {
-		final byte[] bytes = createJava13Class();
+	public void classReaderFor_should_read_java_14_class() {
+		final byte[] bytes = createJava14Class();
 
 		final ClassReader classReader = InstrSupport.classReaderFor(bytes);
 
@@ -56,25 +56,57 @@ public class InstrSupportTest {
 			public void visit(final int version, final int access,
 					final String name, final String signature,
 					final String superName, final String[] interfaces) {
-				assertEquals(Opcodes.V12 + 1, version);
+				assertEquals(Opcodes.V13 + 1, version);
 			}
 		}, 0);
 
-		assertArrayEquals(createJava13Class(), bytes);
+		assertArrayEquals(createJava14Class(), bytes);
 	}
 
-	private static byte[] createJava13Class() {
+	private static byte[] createJava14Class() {
 		final ClassWriter cw = new ClassWriter(0);
-		cw.visit(Opcodes.V12 + 1, 0, "Foo", null, "java/lang/Object", null);
+		cw.visit(Opcodes.V13 + 1, 0, "Foo", null, "java/lang/Object", null);
 		cw.visitEnd();
 		return cw.toByteArray();
 	}
 
 	@Test
-	public void getVersionMajor_should_return_major_version_number() {
-		final byte[] bytes = new byte[] { (byte) 0xCA, (byte) 0xFE, (byte) 0xBA,
-				(byte) 0xBE, /* minor */ 0x00, 0x03, /* major */ 0x00, 0x2D };
-		assertEquals(45, InstrSupport.getVersionMajor(bytes));
+	public void getMajorVersion_should_read_unsigned_two_bytes_at_offset_6() {
+		final byte[] bytes = new byte[] { //
+				(byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE, // magic
+				(byte) 0xFF, (byte) 0xFF, // minor_version
+				(byte) 0x80, (byte) 0x12 // major_version
+		};
+
+		assertEquals(32786, InstrSupport.getMajorVersion(bytes));
+	}
+
+	@Test
+	public void setMajorVersion_should_write_unsigned_two_bytes_at_offset_6() {
+		final byte[] bytes = new byte[8];
+
+		InstrSupport.setMajorVersion(32786, bytes);
+
+		assertArrayEquals(
+				new byte[] { (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, // magic
+						(byte) 0x00, (byte) 0x00, // minor_version
+						(byte) 0x80, (byte) 0x12 // major_version
+				}, bytes);
+	}
+
+	@Test
+	public void getMajorVersion_should_read_major_version_from_ClassReader_at_offset_relative_to_constant_pool() {
+		final byte[] bytes = new byte[] { //
+				(byte) 0xFF, // before class bytes
+				(byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE, // magic
+				0x00, 0x03, // minor_version
+				(byte) 0x80, 0x12, // major_version
+				0x00, 0x02, // constant_pool_count
+				0x01, 0x00, 0x00 // constant_pool
+		};
+
+		assertEquals(32786,
+				InstrSupport.getMajorVersion(new ClassReader(bytes, 1, -1)));
 	}
 
 	@Test
@@ -95,7 +127,10 @@ public class InstrSupportTest {
 		assertTrue(InstrSupport.needsFrames(Opcodes.V10));
 		assertTrue(InstrSupport.needsFrames(Opcodes.V11));
 		assertTrue(InstrSupport.needsFrames(Opcodes.V12));
-		assertTrue(InstrSupport.needsFrames(Opcodes.V12 + 1));
+		assertTrue(InstrSupport.needsFrames(Opcodes.V13));
+		assertTrue(InstrSupport.needsFrames(Opcodes.V13 + 1));
+
+		assertTrue(InstrSupport.needsFrames(0x0100));
 	}
 
 	@Test
